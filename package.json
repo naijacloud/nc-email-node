@@ -1,0 +1,67 @@
+{
+  "name": "@naijacloud/email",
+  "version": "0.1.0",
+  "description": "Official Node.js SDK for Naijamail, the transactional email API of Naija Cloud.",
+  "license": "MIT",
+  "author": "Naija Cloud",
+  "homepage": "https://www.naijacloud.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naijacloud/nc-email-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/naijacloud/nc-email-node/issues"
+  },
+  "keywords": [
+    "naijacloud",
+    "naijamail",
+    "email",
+    "transactional-email",
+    "smtp",
+    "sdk"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
