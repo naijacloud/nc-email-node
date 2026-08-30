@@ -76,6 +76,23 @@ Ruby SDKs use:
 const nm = new Naijamail(process.env.NAIJAMAIL_API_KEY, { timeout: 5_000 });
 ```
 
+### Which key
+
+Two kinds work, and the SDK cannot tell them apart once it has one:
+
+- **`nc_live_…`** — a workspace API key from **Settings → API keys**, ticked for
+  the **Email send** scope. Most teams already have one: it is the same
+  credential CI deploys with. Add **Platform API** as well if the key also needs
+  to manage sending domains or suppressions.
+- **`nmail_live_…` / `nmail_test_…`** — a Naijamail-only key from **Email**. The
+  test variant is refused by the send path with a `403`, on purpose, so a
+  staging box holding production credentials fails loudly instead of mailing
+  real customers. There is no test variant of a workspace key.
+
+An `nc_pat_…` platform token is not accepted: those predate the Email send scope
+and the API refuses them on the mail routes, so the SDK refuses them at
+construction rather than a request later.
+
 With no `apiKey` the SDK reads `NAIJAMAIL_API_KEY`. If neither is set,
 construction throws — a missing key is a deployment mistake, and finding out at
 startup beats finding out at 2am on the first send.

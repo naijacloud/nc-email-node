@@ -52,8 +52,25 @@ const FORBIDDEN_HEADERS = new Set([
  *
  * An empty string or a truncated paste is a local error now, rather than a 401
  * discovered in production an hour after deploy.
+ *
+ * Two families are accepted, because the API accepts two:
+ *
+ *   `nmail_live_` / `nmail_test_` — a Naijamail-only key, from the dashboard's
+ *                  Email screen. The test variant is refused by the send path,
+ *                  which is the point of it.
+ *   `nc_live_`    — a workspace API key carrying the Email send scope, from
+ *                  Settings → API keys. One credential for mail, deploys and
+ *                  the platform API, so a customer who already has one does not
+ *                  need a second.
+ *
+ * Kept as an allowlist rather than relaxed to "any non-empty string". The check
+ * exists to catch the truncated paste and the wrong-variable-name deploy, and a
+ * pattern that accepts anything catches neither.
  */
-const API_KEY_PATTERN = /^nmail_(live|test)_[A-Za-z0-9_-]{8,}$/;
+const API_KEY_PATTERN = /^(?:nmail_(?:live|test)|nc_live)_[A-Za-z0-9_-]{8,}$/;
+
+/** The prefixes above, for redaction. Longest first so matching is unambiguous. */
+const API_KEY_PREFIX = /^(?:nmail_(?:live|test)_|nc_live_)/;
 
 /** CR, LF and NUL: the three characters that let a value break out of a header. */
 const CONTROL_CHARS = /[\r\n\0]/;
@@ -85,7 +102,7 @@ export function assertString(value: unknown, label: string): string {
  * header — logs, `inspect`, `toJSON`, an exception message (§5.3).
  */
 export function redactKey(key: string): string {
-  const prefix = /^nmail_(?:live|test)_/.exec(key)?.[0];
+  const prefix = API_KEY_PREFIX.exec(key)?.[0];
   return prefix ? `${prefix}***` : '***';
 }
 
@@ -104,7 +121,7 @@ export function resolveApiKey(explicit?: string): string {
   if (!API_KEY_PATTERN.test(key)) {
     // The key itself is never quoted back — this message reaches logs.
     throw new ValidationError(
-      'the API key is not shaped like a Naijamail key (expected nmail_live_… or nmail_test_…)',
+      'the API key is not shaped like a Naijamail key (expected nmail_live_…, nmail_test_… or nc_live_…)',
     );
   }
   return key;

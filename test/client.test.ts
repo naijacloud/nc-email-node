@@ -77,12 +77,22 @@ describe('construction', () => {
 
   it.each([
     ['an empty string', ''],
+    // `nc_pat_` is the pre-scopes platform token. The API refuses it on the
+    // mail routes outright — it predates the Email send scope and was never
+    // granted mail access — so the SDK refuses it here rather than a request
+    // later.
     ['a platform token', 'nc_pat_0123456789abcdef'],
     ['the wrong environment word', 'nmail_prod_0123456789abcdef'],
+    ['a test-variant workspace key, which does not exist', 'nc_test_0123456789abcdef'],
     ['a truncated paste', 'nmail_live_short'.slice(0, 14)],
     ['a key with a space in it', 'nmail_live_0123 456789'],
   ])('rejects %s at construction', (_label, key) => {
     expect(() => new Naijamail(key)).toThrow(ValidationError);
+  });
+
+  // A workspace key from Settings → API keys, carrying the Email send scope.
+  it('accepts a workspace API key', () => {
+    expect(() => new Naijamail('nc_live_0123456789abcdefghij')).not.toThrow();
   });
 
   it('never quotes the key back in the shape error', () => {
@@ -164,6 +174,15 @@ describe('key redaction', () => {
 
   it('keeps the key out of string interpolation', () => {
     expect(`${String(client)}`).not.toContain(secretTail);
+  });
+
+  // The redaction has to know the second prefix too, or a workspace key falls
+  // through to the bare `***` and an operator reading a dump loses the one
+  // useful signal — which kind of credential this process is holding.
+  it('redacts a workspace key down to its own prefix', () => {
+    const workspace = new Naijamail('nc_live_needle00000000000000');
+    expect(inspect(workspace)).toContain('nc_live_***');
+    expect(inspect(workspace)).not.toContain('needle');
   });
 });
 
