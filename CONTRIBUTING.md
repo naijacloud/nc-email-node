@@ -16,6 +16,9 @@ npm test           # vitest, once
 npm run test:watch # vitest, watching
 npm run typecheck  # tsc --noEmit over src and test
 npm run build      # tsup: dist/index.js, dist/index.cjs, and both .d.ts files
+
+npm run check:version  # package.json, src/version.ts and the changelog agree
+npm run check:tarball  # what `npm publish` would upload; needs a build first
 ```
 
 `npm test` must pass with the network unplugged. Every test runs against a real
@@ -61,7 +64,49 @@ test, not decoration.
 
 ## Releasing
 
+Releases come from CI, on a tag. Nobody publishes from a laptop: there is no
+npm token in this repo or on anyone's machine, and the provenance attestation
+npm shows next to the package is only worth something because the build that
+produced the tarball is the one anyone can read in `.github/workflows`.
+
+In one commit on `main`:
+
 1. Update `VERSION` in `src/version.ts` and `version` in `package.json` — they
    move together, and a mismatch ships a wrong User-Agent.
-2. Move the `Unreleased` changelog entries under the new version.
-3. `npm publish` — `prepublishOnly` builds and runs the tests first.
+2. Move the `Unreleased` changelog entries under `## [x.y.z] - YYYY-MM-DD`, and
+   update the link definitions at the foot of CHANGELOG.md.
+3. `npm run check:version` — the same check CI runs, so you find a typo here
+   rather than after the tag exists.
+
+Then tag it:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+`release.yml` runs the full CI matrix, re-checks that the tag, package.json and
+`src/version.ts` agree, checks what the tarball would contain, publishes, and
+cuts a GitHub release from that version's changelog section.
+
+A tag whose version has a prerelease part — `v0.2.0-rc.1` — publishes under the
+`next` dist-tag and is marked as a prerelease. It needs no changelog section:
+`npm install @naijacloud/email` resolves `latest`, so an rc reaches only the
+people who ask for it by name.
+
+### Fixing a bad tag
+
+Before the workflow publishes, delete the tag (`git push --delete origin
+v0.2.0`) and start over. After it publishes, you cannot: npm allows unpublishing
+for 72 hours and refuses afterwards. Ship the fix as the next patch version.
+
+### One-time setup
+
+Two settings that live outside the repo, recorded here because nothing in the
+tree reveals them and a release fails confusingly without them:
+
+- **npmjs.com → @naijacloud/email → Settings → Trusted publisher.** Repository
+  `naijacloud/nc-email-node`, workflow `release.yml`, environment `npm`. This is
+  what lets the workflow publish without a token; if the environment field there
+  and the `environment:` in `release.yml` disagree, npm rejects the OIDC claim.
+- **GitHub → Settings → Environments → `npm`.** Add required reviewers here to
+  make a release wait for a human.

@@ -4,10 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Release calls this workflow rather than repeating the matrix, so a tag is
+  # verified by exactly the checks that guard main — not by a second copy of
+  # them that can drift.
+  workflow_call:
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       # Every supported Node reports, rather than the run stopping at the first
       # failure — a break on 18 only is exactly the thing this matrix exists for.
@@ -25,6 +31,10 @@ jobs:
 
       - run: npm ci
 
+      # Cheap, and it fails on the pull request that bumped one version and not
+      # the other rather than at the tag, when the fix costs a deleted tag.
+      - run: npm run check:version
+
       - run: npm run typecheck
 
       - run: npm run build
@@ -32,3 +42,8 @@ jobs:
       # The suite binds 127.0.0.1 and never leaves the machine, so a runner with
       # no egress is a valid environment for it.
       - run: npm test
+
+      # What `npm publish` would upload, checked on every change instead of once
+      # at the tag: the four entrypoints present, and nothing but dist/ and the
+      # docs in the tarball.
+      - run: npm run check:tarball

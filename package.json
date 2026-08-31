@@ -56,7 +56,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build && npm test"
+    "check:version": "node scripts/check-version.mjs",
+    "check:tarball": "node scripts/check-tarball.mjs",
+    "prepublishOnly": "npm run check:version && npm run build && npm test"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

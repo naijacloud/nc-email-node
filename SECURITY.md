@@ -41,6 +41,11 @@ is a security bug worth reporting:
 - File paths are never read on the caller's behalf.
 - No runtime dependencies. Every one would be supply-chain risk taken on your
   behalf by a package that holds your sending credential.
+- Every version on npm is published by a tagged GitHub Actions run, with a
+  provenance attestation tying the tarball to the commit and workflow that built
+  it. No maintainer holds a publish token, so there is no token to steal. Check
+  it yourself with `npm audit signatures` after installing, or read the
+  Provenance panel on the npm page.
 
 ## What it cannot do for you
 

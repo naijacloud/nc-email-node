@@ -16,6 +16,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a process is holding. `nc_pat_…` platform tokens remain refused: they predate
   the scope and the API rejects them on the mail routes.
 
+### Changed
+
+- Releases are published by a tagged CI run with npm trusted publishing, so
+  every version from here on carries a provenance attestation linking the
+  tarball to the commit and the workflow that built it. `npm audit signatures`
+  verifies it. Nothing about the package's contents changes.
+
 ## [0.1.0] - 2026-08-29
 
 First release. Implements SDK-CONTRACT.md in full.
