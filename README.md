@@ -85,9 +85,13 @@ Two kinds work, and the SDK cannot tell them apart once it has one:
   credential CI deploys with. Add **Platform API** as well if the key also needs
   to manage sending domains or suppressions.
 - **`nmail_live_…` / `nmail_test_…`** — a Naijamail-only key from **Email**. The
-  test variant is refused by the send path with a `403`, on purpose, so a
-  staging box holding production credentials fails loudly instead of mailing
-  real customers. There is no test variant of a workspace key.
+  test variant is **sandboxed**: the API accepts the send, returns a real id
+  and a final status, and never hands the message to a mail server. Use one in
+  staging and CI. Send from any domain you have added, or from
+  `…@test.mail.naijacloud.dev`; send *to* `delivered@`, `bounced@` or
+  `complained@test.mail.naijacloud.dev` to get that outcome. A message sent
+  this way comes back from `get` with `sandbox` set to true. There is no test
+  variant of a workspace key.
 
 An `nc_pat_…` platform token is not accepted: those predate the Email send scope
 and the API refuses them on the mail routes, so the SDK refuses them at
@@ -196,7 +200,7 @@ Every failure is a `NaijamailError`, so one `catch` is enough, and each carries
 | --- | --- |
 | `ValidationError` | 400, 422, and anything this SDK refuses locally (`statusCode: 0`) |
 | `AuthenticationError` | 401 — missing, unknown or revoked key |
-| `PermissionError` | 403 — test key on the live path, unverified domain, quota |
+| `PermissionError` | 403 — unverified domain, a key without the right scope, quota |
 | `NotFoundError` | 404, and the server's 400 `message not found` |
 | `ConflictError` | 409 |
 | `RateLimitError` | 429; carries `retryAfter` in seconds |
