@@ -266,6 +266,9 @@ export function errorFromResponse(
       return new TimeoutError(message, base);
     case 409:
       return new ConflictError(message, base);
+    case 413:
+    // The server's body parser refusing an oversized request: the caller's
+    // input, and no retry will shrink it.
     case 422:
       return new ValidationError(message, base);
     case 429:

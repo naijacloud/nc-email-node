@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { WebhookVerificationError, verifyWebhook } from '../src/index';
+import { ValidationError, WebhookVerificationError, verifyWebhook } from '../src/index';
 
 const SECRET = 'nmail_whsec_test0000000000000000';
 const PAYLOAD = JSON.stringify({
@@ -127,5 +127,22 @@ describe('verifyWebhook', () => {
     expect(() => verifyWebhook(raw, header(raw), SECRET)).toThrow(/not valid JSON/);
     const array = '[1,2,3]';
     expect(() => verifyWebhook(array, header(array), SECRET)).toThrow(/not a JSON object/);
+  });
+});
+
+describe('verifyWebhook tolerance', () => {
+  it('refuses a NaN tolerance instead of switching replay protection off', () => {
+    // Number(process.env.UNSET) is NaN, and `skew > NaN` is always false.
+    const stale = header(PAYLOAD, SECRET, nowSeconds() - 86_400);
+    for (const tolerance of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      expect(() => verifyWebhook(PAYLOAD, stale, SECRET, { tolerance })).toThrow(ValidationError);
+    }
+  });
+
+  it('still allows a strict zero tolerance', () => {
+    const late = header(PAYLOAD, SECRET, nowSeconds() - 5);
+    expect(() => verifyWebhook(PAYLOAD, late, SECRET, { tolerance: 0 })).toThrow(
+      WebhookVerificationError,
+    );
   });
 });
