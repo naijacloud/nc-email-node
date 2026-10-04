@@ -6,15 +6,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-04
+
 ### Added
 
-- Accept a workspace API key (`nc_live_…`) alongside the Naijamail keys. It is
-  the credential from **Settings → API keys**, and it reaches the mail API when
-  it carries the **Email send** scope — so a team that already has one for
-  deploys and the platform API does not need a second secret to send mail.
-  Redaction knows the new prefix, so a dump still shows which kind of credential
-  a process is holding. `nc_pat_…` platform tokens remain refused: they predate
-  the scope and the API rejects them on the mail routes.
 - `Email.sandbox` on a retrieved email: true for a message sent with a test key,
   which is recorded but never delivered, so a simulated bounce can be told from
   a real one.
@@ -34,12 +29,19 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tarball to the commit and the workflow that built it. `npm audit signatures`
   verifies it. Nothing about the package's contents changes.
 
-## [0.1.0] - 2026-08-29
+## [0.1.0] - 2026-08-31
 
 First release. Implements SDK-CONTRACT.md in full.
 
 ### Added
 
+- Accept a workspace API key (`nc_live_…`) alongside the Naijamail keys. It is
+  the credential from **Settings → API keys**, and it reaches the mail API when
+  it carries the **Email send** scope — so a team that already has one for
+  deploys and the platform API does not need a second secret to send mail.
+  Redaction knows the new prefix, so a dump still shows which kind of credential
+  a process is holding. `nc_pat_…` platform tokens remain refused: they predate
+  the scope and the API rejects them on the mail routes.
 - `Naijamail` client with `emails.send()` and `emails.get()` — the two endpoints
   the API has.
 - Configuration by constructor or environment (`NAIJAMAIL_API_KEY`,
@@ -64,5 +66,6 @@ First release. Implements SDK-CONTRACT.md in full.
 - Dual ESM and CommonJS builds with TypeScript types, and no runtime
   dependencies.
 
-[Unreleased]: https://github.com/naijacloud/nc-email-node/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/naijacloud/nc-email-node/releases/tag/v0.1.0
+[Unreleased]: https://github.com/naijacloud/nc-email-node/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/naijacloud/nc-email-node/releases/tag/v0.2.0
+[0.1.0]: https://www.npmjs.com/package/@naijacloud/email/v/0.1.0
