@@ -309,6 +309,7 @@ export function toEmail(raw: unknown): Email {
     deliveredAt: typeof deliveredAt === 'string' ? deliveredAt : null,
     opened: source['opened'] === true,
     clicked: source['clicked'] === true,
+    sandbox: source['sandbox'] === true,
   };
 
   // Present only on failure, so it stays absent rather than becoming an empty

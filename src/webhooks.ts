@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { WebhookVerificationError } from './errors';
+import { ValidationError, WebhookVerificationError } from './errors';
 import type { WebhookEvent } from './types';
 
 /**
@@ -51,6 +51,12 @@ export function verifyWebhook(
 
   const body = toBytes(payload);
   const tolerance = options.tolerance ?? DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+  // NaN compares false against everything, so `skew > NaN` would never fire
+  // and every replayed event would pass — and `Number(process.env.X)` on an
+  // unset variable is exactly how a NaN arrives.
+  if (typeof tolerance !== 'number' || !Number.isFinite(tolerance) || tolerance < 0) {
+    throw new ValidationError('tolerance must be a finite number of seconds, 0 or more');
+  }
   const { timestamp, signatures } = parseSignatureHeader(signatureHeader);
 
   // The timestamp check, not the HMAC, is what stops a replay: a signature

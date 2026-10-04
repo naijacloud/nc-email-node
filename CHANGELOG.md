@@ -15,6 +15,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Redaction knows the new prefix, so a dump still shows which kind of credential
   a process is holding. `nc_pat_…` platform tokens remain refused: they predate
   the scope and the API rejects them on the mail routes.
+- `Email.sandbox` on a retrieved email: true for a message sent with a test key,
+  which is recorded but never delivered, so a simulated bounce can be told from
+  a real one.
+
+### Fixed
+
+- `verifyWebhook` refuses a `tolerance` that is NaN, infinite or negative.
+  A NaN (for example `Number(process.env.UNSET)`) switched replay protection off.
+- A 413 (request too large) is a `ValidationError`, as in the Go and PHP SDKs.
+- Test keys (`nmail_test_…`) are sandboxed by the API, not refused with a 403.
+  The README said otherwise.
 
 ### Changed
 

@@ -136,6 +136,12 @@ export interface Email {
   clicked: boolean;
   /** Present only when the message failed. */
   failureReason?: string;
+  /**
+   * True for a message sent with a test key (`nmail_test_…`): recorded, never
+   * handed to a mail server. A `bounced` sandbox message is a simulated
+   * outcome, not a deliverability problem.
+   */
+  sandbox: boolean;
 }
 
 export interface NaijamailOptions {

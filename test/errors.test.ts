@@ -52,6 +52,8 @@ describe('status to error type', () => {
     [404, NotFoundError],
     [408, TimeoutError],
     [409, ConflictError],
+    // The body parser refusing an oversized request: the caller's input.
+    [413, ValidationError],
     [422, ValidationError],
     [429, RateLimitError],
     [500, ServerError],

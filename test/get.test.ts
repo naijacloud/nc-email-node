@@ -42,6 +42,7 @@ describe('emails.get', () => {
         deliveredAt: '2026-08-29T10:00:04.000Z',
         opened: false,
         clicked: false,
+        sandbox: false,
       });
       expect(server.requests[0]?.method).toBe('GET');
       expect(server.requests[0]?.url).toBe(`/v1/emails/${DELIVERED.id}`);
@@ -107,6 +108,24 @@ describe('emails.get', () => {
       await expect(client.emails.get('   ')).rejects.toThrow(ValidationError);
       await expect(client.emails.get('abc\r\n')).rejects.toThrow(ValidationError);
       expect(server.requests).toHaveLength(0);
+    });
+  });
+});
+
+describe('sandbox messages', () => {
+  it('exposes the sandbox flag so a simulated bounce is not mistaken for a real one', async () => {
+    await withServer(
+      reply(200, { ...DELIVERED, status: 'bounced', sandbox: true }),
+      async (client) => {
+        const email = await client.emails.get(DELIVERED.id);
+        expect(email.sandbox).toBe(true);
+      },
+    );
+  });
+
+  it('reads an absent flag as false', async () => {
+    await withServer(reply(200, DELIVERED), async (client) => {
+      expect((await client.emails.get(DELIVERED.id)).sandbox).toBe(false);
     });
   });
 });
