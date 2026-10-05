@@ -33,13 +33,15 @@ const output = execFileSync('npm', ['pack', '--dry-run', '--json'], {
   stdio: ['ignore', 'pipe', 'ignore'],
 });
 
-// `npm pack --json` prints an array on the npm releases that were current when
-// this was written; the CI run that publishes installs `npm@latest`, and a
-// release that prints the one tarball as a bare object would otherwise crash
-// here with a TypeError that says nothing about npm.
+// Two shapes, because the release workflow installs `npm@latest` and this has
+// already changed under us once: npm 11.19 and earlier print an array of
+// tarballs, newer npm prints an object keyed by package name. Take the one
+// entry either way rather than pinning a version — the next shape change
+// fails loudly below instead of reading `files` off the wrong object.
 const parsed = JSON.parse(output);
-const packed = Array.isArray(parsed) ? parsed[0] : parsed;
-if (!packed?.files) {
+const entries = Array.isArray(parsed) ? parsed : Object.values(parsed);
+const [packed] = entries;
+if (entries.length !== 1 || !Array.isArray(packed?.files)) {
   console.error(`✗ \`npm pack --dry-run --json\` printed something unexpected: ${output.slice(0, 200)}`);
   process.exit(1);
 }
