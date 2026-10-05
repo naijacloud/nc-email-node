@@ -33,7 +33,16 @@ const output = execFileSync('npm', ['pack', '--dry-run', '--json'], {
   stdio: ['ignore', 'pipe', 'ignore'],
 });
 
-const [packed] = JSON.parse(output);
+// `npm pack --json` prints an array on the npm releases that were current when
+// this was written; the CI run that publishes installs `npm@latest`, and a
+// release that prints the one tarball as a bare object would otherwise crash
+// here with a TypeError that says nothing about npm.
+const parsed = JSON.parse(output);
+const packed = Array.isArray(parsed) ? parsed[0] : parsed;
+if (!packed?.files) {
+  console.error(`✗ \`npm pack --dry-run --json\` printed something unexpected: ${output.slice(0, 200)}`);
+  process.exit(1);
+}
 const files = packed.files.map((file) => file.path);
 const problems = [];
 
