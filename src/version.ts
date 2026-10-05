@@ -6,4 +6,4 @@
  * only `dist/` — a runtime read of a file outside it is a crash waiting for the
  * first consumer who bundles us. `npm version` and this line move together.
  */
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.2';
