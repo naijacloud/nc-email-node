@@ -1,6 +1,6 @@
 {
   "name": "@naijacloud/email",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Official Node.js SDK for Naijamail, the transactional email API of Naija Cloud.",
   "license": "MIT",
   "author": "Naija Cloud",
