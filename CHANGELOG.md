@@ -6,6 +6,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-05
+
+No code changes since 0.2.0. The 0.2.0 tag was never published to npm, so this
+is the first release to carry its changes.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added
@@ -66,6 +71,7 @@ First release. Implements SDK-CONTRACT.md in full.
 - Dual ESM and CommonJS builds with TypeScript types, and no runtime
   dependencies.
 
-[Unreleased]: https://github.com/naijacloud/nc-email-node/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/naijacloud/nc-email-node/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/naijacloud/nc-email-node/releases/tag/v0.2.1
 [0.2.0]: https://github.com/naijacloud/nc-email-node/releases/tag/v0.2.0
 [0.1.0]: https://www.npmjs.com/package/@naijacloud/email/v/0.1.0
