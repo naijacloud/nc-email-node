@@ -7,7 +7,7 @@ import {
   parseRetryAfter,
   retryDelay,
 } from '../src/retry';
-import { Naijamail, PermissionError, ServerError } from '../src/index';
+import { Naijamail, PermissionError, ServerError, TimeoutError } from '../src/index';
 import {
   ACCEPTED,
   MINIMAL_SEND,
@@ -117,6 +117,65 @@ describe('retrying real requests', () => {
       expect(server.requests).toHaveLength(2);
       // Jittered backoff alone would very probably be shorter than this.
       expect(elapsed).toBeGreaterThanOrEqual(950);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('honours Retry-After on a 503 too, not only on a 429', async () => {
+    const server = await startMockServer([
+      reply(503, { statusCode: 503, message: 'down' }, { 'retry-after': '1' }),
+      reply(202, ACCEPTED),
+    ]);
+    try {
+      const client = new Naijamail({ apiKey: TEST_KEY, baseUrl: server.baseUrl });
+      const started = Date.now();
+      await client.emails.send(MINIMAL_SEND);
+      expect(server.requests).toHaveLength(2);
+      expect(Date.now() - started).toBeGreaterThanOrEqual(950);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('does not retry a non-JSON 2xx, and keeps its raw text', async () => {
+    const server = await startMockServer(reply(202, '<html>ok</html>'));
+    try {
+      const client = new Naijamail({ apiKey: TEST_KEY, baseUrl: server.baseUrl });
+      const error = await client.emails.send(MINIMAL_SEND).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ServerError);
+      expect((error as ServerError).rawBody).toBe('<html>ok</html>');
+      expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('does not retry a 2xx send response that has no id', async () => {
+    const server = await startMockServer(reply(202, { status: 'queued' }));
+    try {
+      const client = new Naijamail({ apiKey: TEST_KEY, baseUrl: server.baseUrl });
+      await expect(client.emails.send(MINIMAL_SEND)).rejects.toThrow(ServerError);
+      expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('times out an attempt whose body trickles in, not just a silent socket', async () => {
+    // Headers at once, then a byte every 50ms for ever: a per-read timeout
+    // would never fire. The deadline covers the whole response.
+    const server = await startMockServer((_req, res) => {
+      res.writeHead(202, { 'content-type': 'application/json' });
+      res.write('{');
+      const timer = setInterval(() => res.write(' '), 50);
+      res.on('close', () => clearInterval(timer));
+    });
+    try {
+      const client = new Naijamail({ apiKey: TEST_KEY, baseUrl: server.baseUrl, timeout: 300, maxRetries: 0 });
+      const started = Date.now();
+      await expect(client.emails.send(MINIMAL_SEND)).rejects.toThrow(TimeoutError);
+      expect(Date.now() - started).toBeLessThan(3000);
     } finally {
       await server.close();
     }

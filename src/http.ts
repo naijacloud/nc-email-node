@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import {
   AuthenticationError,
   ConflictError,
@@ -10,7 +11,13 @@ import {
   TimeoutError,
   ValidationError,
 } from './errors';
-import { isRetryableStatus, parseRetryAfter, retryDelay, sleep } from './retry';
+import {
+  RETRY_AFTER_MAX_MS,
+  isRetryableStatus,
+  parseRetryAfter,
+  retryDelay,
+  sleep,
+} from './retry';
 import { redactKey } from './validate';
 
 /**
@@ -86,7 +93,12 @@ export class Transport {
       'User-Agent': this.userAgent,
     };
     if (spec.body !== undefined) headers['Content-Type'] = 'application/json';
-    if (spec.idempotencyKey !== undefined) headers['Idempotency-Key'] = spec.idempotencyKey;
+    if (spec.idempotencyKey !== undefined) {
+      // fetch only takes a ByteString header value, so a non-ASCII key would
+      // throw a TypeError. Re-spelling its UTF-8 bytes as latin1 code points
+      // puts exactly those bytes on the wire, which is what every SDK sends.
+      headers['Idempotency-Key'] = Buffer.from(spec.idempotencyKey, 'utf8').toString('latin1');
+    }
 
     // A fresh deadline per attempt, not one shared across the call: a retry
     // inheriting the exhausted deadline of the attempt that timed out would be
@@ -216,7 +228,7 @@ function parseSuccessBody(text: string, response: Response): unknown {
     throw new ServerError('the server returned a non-JSON success response', {
       statusCode: response.status,
       requestId: requestIdOf(response),
-      body: text,
+      rawBody: text,
     });
   }
 }
@@ -245,6 +257,7 @@ export function errorFromResponse(
     error: parsed.error,
     requestId: requestIdOf(response),
     body: parsed.body,
+    rawBody: text,
   };
 
   switch (status) {
@@ -274,13 +287,18 @@ export function errorFromResponse(
     case 429:
       return new RateLimitError(message, {
         ...base,
-        ...(retryAfterMs === undefined ? {} : { retryAfter: Math.round(retryAfterMs / 1000) }),
+        // Clamped to the same minute the retry loop honours, so a caller who
+        // waits `retryAfter` itself never parks longer than the SDK would.
+        ...(retryAfterMs === undefined
+          ? {}
+          : { retryAfter: Math.round(Math.min(retryAfterMs, RETRY_AFTER_MAX_MS) / 1000) }),
       });
     default:
       if (status >= 500) return new ServerError(message, base);
-      // An unmapped 4xx (405, 413, 415…) is not the caller's payload being
-      // wrong in a way we can name, so it stays as the base class rather than
-      // being filed under a type that would mislead.
+      // Any other 4xx (405, 415, 451…): the request as sent will never
+      // succeed, which is what ValidationError means to a caller. Same in
+      // every Naijamail SDK (SDK-CONTRACT.md §3).
+      if (status >= 400 && status < 500) return new ValidationError(message, base);
       return new NaijamailError(message, base);
   }
 }
@@ -296,7 +314,8 @@ function parseErrorBody(text: string): {
   try {
     parsed = JSON.parse(text) as unknown;
   } catch {
-    return { message: undefined, error: undefined, body: text };
+    // Not JSON: there is no parsed body. The text itself is on `rawBody`.
+    return { message: undefined, error: undefined, body: undefined };
   }
 
   if (!parsed || typeof parsed !== 'object') {

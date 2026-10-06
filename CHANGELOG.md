@@ -6,6 +6,39 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-07
+
+Conformance pass across the five Naijamail SDKs (TGL-741); behaviour now matches
+SDK-CONTRACT.md exactly.
+
+### Changed
+
+- The 10 MiB size check measures what the server measures — UTF-8 bytes of
+  `html` + `text` + decoded attachment bytes — instead of the encoded JSON body.
+  Attachments of roughly 7.5–10 MiB are no longer refused locally.
+- Any 4xx without its own class (405, 415, 451…) is a `ValidationError`, not the
+  base `NaijamailError`.
+- A string attachment `content` is taken as already base64; `encoding: 'base64'`
+  is no longer required (still accepted).
+- `error.body` is the parsed JSON body or `undefined`; it no longer holds the raw
+  text of a non-JSON response. The raw text is on the new `error.rawBody`.
+- The idempotency key limit (255) is counted in UTF-8 bytes, and a non-ASCII key
+  is sent as its UTF-8 bytes instead of failing inside `fetch`.
+
+### Added
+
+- `NaijamailError.rawBody`: the response text exactly as received.
+- An `nc_pat_…` key is refused with a message explaining it is a personal access
+  token and which keys to use instead.
+
+### Fixed
+
+- `RateLimitError.retryAfter` is clamped to 60 seconds, like the retry loop.
+- `maxRetries` above 10 is refused at construction.
+- A blank `NAIJAMAIL_BASE_URL` is treated as unset instead of failing construction.
+- An empty attachment is refused before the request (the API refused it).
+- A webhook `t=` value must be 1–12 digits.
+
 ## [0.2.1] - 2026-10-05
 
 No code changes since 0.2.0. The 0.2.0 tag was never published to npm, so this
@@ -71,7 +104,8 @@ First release. Implements SDK-CONTRACT.md in full.
 - Dual ESM and CommonJS builds with TypeScript types, and no runtime
   dependencies.
 
-[Unreleased]: https://github.com/naijacloud/nc-email-node/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/naijacloud/nc-email-node/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/naijacloud/nc-email-node/releases/tag/v0.3.0
 [0.2.1]: https://github.com/naijacloud/nc-email-node/releases/tag/v0.2.1
 [0.2.0]: https://github.com/naijacloud/nc-email-node/releases/tag/v0.2.0
 [0.1.0]: https://www.npmjs.com/package/@naijacloud/email/v/0.1.0

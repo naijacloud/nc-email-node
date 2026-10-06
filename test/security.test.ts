@@ -138,13 +138,63 @@ describe('client-side limits', () => {
     await expectRefusedLocally({ ...MINIMAL_SEND, tags: { k: 'v'.repeat(257) } }, /256/);
   });
 
-  it('refuses a payload over 10 MiB without spending the upload', async () => {
-    // 8 MiB of bytes is about 10.7 MiB once base64-encoded.
-    const content = Buffer.alloc(8 * 1024 * 1024, 7);
+  it('refuses a message over 10 MiB, measured as the server does, without spending the upload', async () => {
+    const content = Buffer.alloc(SENDING_LIMITS.MAX_BYTES - 4, 7);
+    // html (3 bytes) + text (2 bytes) + attachment bytes: one byte over.
     await expectRefusedLocally(
-      { ...MINIMAL_SEND, attachments: [{ filename: 'big.bin', content }] },
+      {
+        ...MINIMAL_SEND,
+        html: 'x'.repeat(3),
+        text: 'é', // 2 bytes of UTF-8
+        attachments: [{ filename: 'big.bin', content }],
+      },
       /over the 10485760-byte limit/,
     );
+  });
+
+  it('accepts an 8 MiB attachment the server would take, though its JSON is over 10 MiB', async () => {
+    const server = await startMockServer(reply(202, ACCEPTED));
+    const client = new Naijamail({ apiKey: TEST_KEY, baseUrl: server.baseUrl, maxRetries: 0 });
+    try {
+      const content = Buffer.alloc(8 * 1024 * 1024, 7);
+      await client.emails.send({ ...MINIMAL_SEND, attachments: [{ filename: 'big.bin', content }] });
+      expect(server.requests).toHaveLength(1);
+      expect(Buffer.byteLength(server.requests[0]?.body ?? '')).toBeGreaterThan(SENDING_LIMITS.MAX_BYTES);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('allows a message of exactly 10 MiB', async () => {
+    const server = await startMockServer(reply(202, ACCEPTED));
+    const client = new Naijamail({ apiKey: TEST_KEY, baseUrl: server.baseUrl, maxRetries: 0 });
+    try {
+      const html = 'x'.repeat(10);
+      const content = Buffer.alloc(SENDING_LIMITS.MAX_BYTES - 10, 7);
+      await client.emails.send({ ...MINIMAL_SEND, html, attachments: [{ filename: 'f.bin', content }] });
+      expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('counts a base64 string attachment by its decoded size', async () => {
+    const server = await startMockServer(reply(202, ACCEPTED));
+    const client = new Naijamail({ apiKey: TEST_KEY, baseUrl: server.baseUrl, maxRetries: 0 });
+    try {
+      // 9 MiB decoded, 12 MiB encoded.
+      const content = Buffer.alloc(9 * 1024 * 1024, 1).toString('base64');
+      await client.emails.send({ ...MINIMAL_SEND, attachments: [{ filename: 'f.bin', content }] });
+      expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('checks forbidden header names with surrounding whitespace trimmed', async () => {
+    for (const name of [' From', 'Bcc\t', ' DKIM-Signature ', 'received ']) {
+      await expectRefusedLocally({ ...MINIMAL_SEND, headers: { [name]: 'x' } }, /cannot be overridden/);
+    }
   });
 });
 

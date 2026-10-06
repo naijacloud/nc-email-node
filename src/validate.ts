@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { ValidationError } from './errors';
 
 /**
@@ -16,13 +17,17 @@ import { ValidationError } from './errors';
 export const SENDING_LIMITS = {
   /** Across to + cc + bcc, per message. */
   MAX_RECIPIENTS: 50,
-  /** Total encoded request body. Attachments are base64, so ~4/3 of their byte size. */
+  /**
+   * Message size, measured as the server measures it: UTF-8 bytes of html +
+   * UTF-8 bytes of text + decoded (raw) attachment bytes. Not the JSON body —
+   * base64 inflation is not counted. Equal to the limit is allowed.
+   */
   MAX_BYTES: 10 * 1024 * 1024,
   MAX_HEADERS: 25,
   MAX_TAGS: 10,
   MAX_TAG_KEY_LENGTH: 64,
   MAX_TAG_VALUE_LENGTH: 256,
-  /** The `Idempotency-Key` header's documented ceiling. */
+  /** The `Idempotency-Key` ceiling, in UTF-8 bytes (not characters). */
   MAX_IDEMPOTENCY_KEY_LENGTH: 255,
 } as const;
 
@@ -106,6 +111,10 @@ export function redactKey(key: string): string {
   return prefix ? `${prefix}***` : '***';
 }
 
+/** SDK-CONTRACT.md §1 wording, identical in every Naijamail SDK. */
+export const NC_PAT_MESSAGE =
+  'this is a personal access token (nc_pat_…), which cannot send mail; use a mail API key (nmail_live_… or nmail_test_…) or a workspace API key with the Email send scope (nc_live_…)';
+
 /** Resolve the key from the constructor or the environment, and check its shape. */
 export function resolveApiKey(explicit?: string): string {
   const raw = explicit ?? process.env['NAIJAMAIL_API_KEY'] ?? '';
@@ -117,6 +126,11 @@ export function resolveApiKey(explicit?: string): string {
     throw new ValidationError(
       'no Naijamail API key: pass one to the Naijamail constructor or set NAIJAMAIL_API_KEY',
     );
+  }
+  if (key.startsWith('nc_pat_')) {
+    // The pre-scope platform token: the mail routes refuse it, so say why here
+    // rather than with the generic shape error (SDK-CONTRACT.md §1).
+    throw new ValidationError(NC_PAT_MESSAGE);
   }
   if (!API_KEY_PATTERN.test(key)) {
     // The key itself is never quoted back — this message reaches logs.
@@ -137,7 +151,10 @@ export function resolveApiKey(explicit?: string): string {
  * and because the test suite needs it.
  */
 export function resolveBaseUrl(explicit?: string): string {
-  const raw = explicit ?? process.env['NAIJAMAIL_BASE_URL'] ?? DEFAULT_BASE_URL;
+  // A blank NAIJAMAIL_BASE_URL (an empty `export` in a deploy config) means
+  // "unset", exactly like an absent one — not a construction error.
+  const fromEnv = process.env['NAIJAMAIL_BASE_URL'];
+  const raw = explicit ?? (fromEnv?.trim() ? fromEnv.trim() : DEFAULT_BASE_URL);
 
   let url: URL;
   try {
@@ -257,16 +274,19 @@ export function validateTags(tags: Record<string, string>): Record<string, strin
 
 /**
  * The idempotency key travels as a request header, so it gets the same
- * treatment as any other header value.
+ * treatment as any other header value. Its length is counted in UTF-8 bytes,
+ * as the server stores it — not in UTF-16 code units. (An empty key never
+ * reaches here: the caller treats it as "none supplied" and generates one.)
  */
 export function validateIdempotencyKey(key: string): string {
   const value = assertString(key, 'idempotencyKey');
   if (!value.trim()) {
-    throw new ValidationError('idempotencyKey must not be empty');
+    throw new ValidationError('idempotencyKey must not be blank');
   }
-  if (value.length > SENDING_LIMITS.MAX_IDEMPOTENCY_KEY_LENGTH) {
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes > SENDING_LIMITS.MAX_IDEMPOTENCY_KEY_LENGTH) {
     throw new ValidationError(
-      `idempotencyKey is longer than ${SENDING_LIMITS.MAX_IDEMPOTENCY_KEY_LENGTH} characters`,
+      `idempotencyKey is ${bytes} bytes of UTF-8, over the ${SENDING_LIMITS.MAX_IDEMPOTENCY_KEY_LENGTH}-byte limit`,
     );
   }
   assertNoControlChars(value, 'idempotencyKey');

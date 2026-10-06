@@ -48,13 +48,12 @@ export function isKnownMessageStatus(value: string): value is KnownMessageStatus
 /**
  * A file to attach.
  *
- * `content` is bytes, and the SDK base64-encodes them (§5.10). The
- * pre-encoded arm exists for callers who already hold base64 (a data URL, a row
- * from a database) and must opt in explicitly with `encoding: 'base64'` — an
- * unannotated string is refused, because the common way to get this wrong is to
- * pass a *file path* and expect the SDK to read it. It never will: an SDK that
- * opens arbitrary paths on a caller's behalf is an LFI primitive sitting inside
- * a web handler.
+ * `content` is raw bytes (`Buffer`, `Uint8Array`, `ArrayBuffer`), which the SDK
+ * base64-encodes (§5.10), or a string, which is taken as **already base64** and
+ * validated strictly before it goes on the wire. `encoding: 'base64'` is
+ * accepted on a string for readability but not required. Content must not be
+ * empty. A file path is never read: an SDK that opens arbitrary paths on a
+ * caller's behalf is an LFI primitive sitting inside a web handler.
  */
 export type Attachment =
   | {
@@ -70,7 +69,7 @@ export type Attachment =
       filename: string;
       /** Already base64. Validated strictly before it goes on the wire. */
       content: string;
-      encoding: 'base64';
+      encoding?: 'base64';
       contentType?: string;
       contentId?: string;
     };
@@ -149,9 +148,9 @@ export interface NaijamailOptions {
   apiKey?: string;
   /** Falls back to `NAIJAMAIL_BASE_URL`, then `https://api.naijacloud.com`. Must be https unless it is loopback. */
   baseUrl?: string;
-  /** Milliseconds, per attempt (not per call). Default 30000. */
+  /** Milliseconds, per attempt (not per call), covering connect and the whole response read. Must be > 0. Default 30000. */
   timeout?: number;
-  /** Retries after the first attempt. Default 2, so 3 attempts in total. */
+  /** Retries after the first attempt, 0 to 10. Default 2, so 3 attempts in total. */
   maxRetries?: number;
   /** Appended to the User-Agent. Never put anything secret here. */
   userAgentSuffix?: string;

@@ -8,6 +8,48 @@ afterEach(() => {
   delete process.env['NAIJAMAIL_BASE_URL'];
 });
 
+describe('TGL-741 construction conformance', () => {
+  it('gives an nc_pat_ key the specific contract message, without quoting the key', () => {
+    const key = 'nc_pat_secret0000000000000000';
+    let error: unknown;
+    try {
+      new Naijamail(key);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as Error).message).toBe(
+      'this is a personal access token (nc_pat_…), which cannot send mail; use a mail API key (nmail_live_… or nmail_test_…) or a workspace API key with the Email send scope (nc_live_…)',
+    );
+    expect((error as Error).message).not.toContain('secret0000');
+  });
+
+  it('trims a trailing newline from a key read from a file', () => {
+    expect(() => new Naijamail(`${TEST_KEY}\n`)).not.toThrow();
+  });
+
+  it('treats a blank NAIJAMAIL_BASE_URL as unset', () => {
+    process.env['NAIJAMAIL_BASE_URL'] = '';
+    expect(new Naijamail(TEST_KEY).baseUrl).toBe('https://api.naijacloud.com');
+    process.env['NAIJAMAIL_BASE_URL'] = '   ';
+    expect(new Naijamail(TEST_KEY).baseUrl).toBe('https://api.naijacloud.com');
+  });
+
+  it('refuses a query string in NAIJAMAIL_BASE_URL too', () => {
+    process.env['NAIJAMAIL_BASE_URL'] = 'https://api.example.com/?x=1';
+    expect(() => new Naijamail(TEST_KEY)).toThrow(/query string/);
+  });
+
+  it('accepts maxRetries up to 10 and refuses more', () => {
+    expect(new Naijamail(TEST_KEY, { maxRetries: 10 }).maxRetries).toBe(10);
+    expect(() => new Naijamail(TEST_KEY, { maxRetries: 11 })).toThrow(ValidationError);
+  });
+
+  it('refuses a zero timeout rather than reading it as "no timeout"', () => {
+    expect(() => new Naijamail(TEST_KEY, { timeout: 0 })).toThrow(ValidationError);
+  });
+});
+
 describe('construction', () => {
   it('takes a key as a string', () => {
     const client = new Naijamail(TEST_KEY);

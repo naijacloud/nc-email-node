@@ -9,6 +9,8 @@ import { VERSION } from './version';
 const DEFAULT_TIMEOUT_MS = 30_000;
 /** Retries after the first attempt, so 3 attempts in total. */
 const DEFAULT_MAX_RETRIES = 2;
+/** More than this is never the right answer: it turns an outage into a hang. */
+const MAX_MAX_RETRIES = 10;
 
 /**
  * The Naijamail client.
@@ -114,6 +116,9 @@ function validateMaxRetries(value: number | undefined): number {
   if (value === undefined) return DEFAULT_MAX_RETRIES;
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
     throw new ValidationError('maxRetries must be a non-negative integer');
+  }
+  if (value > MAX_MAX_RETRIES) {
+    throw new ValidationError(`maxRetries must be ${MAX_MAX_RETRIES} or fewer`);
   }
   return value;
 }
