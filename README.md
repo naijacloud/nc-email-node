@@ -63,8 +63,8 @@ const { Naijamail } = require('@naijacloud/email');
 const nm = new Naijamail({
   apiKey: process.env.NAIJAMAIL_API_KEY, // or the first positional argument
   baseUrl: 'https://api.naijacloud.com', // or NAIJAMAIL_BASE_URL
-  timeout: 30_000,                       // milliseconds, per attempt
-  maxRetries: 2,                         // attempts after the first
+  timeout: 30_000,                       // milliseconds, per attempt; must be > 0
+  maxRetries: 2,                         // attempts after the first, 0 to 10
   userAgentSuffix: 'acme-billing/2.1',   // appended to the User-Agent
 });
 ```
@@ -95,9 +95,12 @@ Two kinds work, and the SDK cannot tell them apart once it has one:
 
 An `nc_pat_…` platform token is not accepted: those predate the Email send scope
 and the API refuses them on the mail routes, so the SDK refuses them at
-construction rather than a request later.
+construction rather than a request later, with a message saying so.
 
-With no `apiKey` the SDK reads `NAIJAMAIL_API_KEY`. If neither is set,
+With no `apiKey` the SDK reads `NAIJAMAIL_API_KEY`. Surrounding whitespace (the
+trailing newline of a key read from a file) is trimmed. A blank
+`NAIJAMAIL_BASE_URL` is treated as unset; a base URL with a query string or
+fragment is refused. If neither is set,
 construction throws — a missing key is a deployment mistake, and finding out at
 startup beats finding out at 2am on the first send.
 
@@ -162,15 +165,19 @@ await nm.emails.send({
 });
 ```
 
-If you already hold base64, say so explicitly:
+A **string** `content` is taken as already base64 and validated strictly
+(alphabet, padding) before it is sent; `encoding: 'base64'` may be added for
+readability but is not required:
 
 ```ts
-{ filename: 'invoice.pdf', content: base64String, encoding: 'base64' }
+{ filename: 'invoice.pdf', content: base64String }
 ```
+
+An empty attachment is refused locally (the API refuses it too).
 
 The SDK **never reads a file path**. Reading a caller-supplied path on their
 behalf would make every web handler that forwards user input an arbitrary-file-read
-primitive, so `content: './invoice.pdf'` is rejected, not opened.
+primitive, so `content: './invoice.pdf'` is rejected as invalid base64, not opened.
 
 ### Retrieving a message
 
@@ -178,6 +185,10 @@ primitive, so `content: './invoice.pdf'` is rejected, not opened.
 const email = await nm.emails.get(id);
 // { id, to, from, subject, status, createdAt, deliveredAt, opened, clicked, failureReason? }
 ```
+
+`createdAt` and `deliveredAt` are the server's ISO 8601 strings, left as strings
+so no timezone is invented on the way through (other Naijamail SDKs return their
+language's date type; that difference is deliberate).
 
 `to` is a single address: the server writes one record per primary recipient, so
 a three-recipient send returns the id of the first and each recipient has its own
@@ -194,17 +205,19 @@ switch exhaustively.
 
 Every failure is a `NaijamailError`, so one `catch` is enough, and each carries
 `statusCode`, `error` (the server's short label), `requestId` (from
-`x-request-id` — quote it in a support ticket) and `body`.
+`x-request-id` — quote it in a support ticket), `rawBody` (the response text
+exactly as received) and `body` (that text parsed as JSON, or `undefined` when it
+was empty or not JSON).
 
 | Class | When |
 | --- | --- |
-| `ValidationError` | 400, 422, and anything this SDK refuses locally (`statusCode: 0`) |
+| `ValidationError` | 400, 413, 422, any other 4xx not listed here (405, 415, 451…), and anything this SDK refuses locally (`statusCode: 0`) |
 | `AuthenticationError` | 401 — missing, unknown or revoked key |
 | `PermissionError` | 403 — unverified domain, a key without the right scope, quota |
 | `NotFoundError` | 404, and the server's 400 `message not found` |
 | `ConflictError` | 409 |
-| `RateLimitError` | 429; carries `retryAfter` in seconds |
-| `ServerError` | 5xx, an unreadable response, or an unexpected redirect |
+| `RateLimitError` | 429; carries `retryAfter` in seconds, clamped to 60 |
+| `ServerError` | 5xx, an unreadable 2xx (not JSON, or a send with no `id` — not retried), or an unexpected redirect |
 | `ConnectionError` | DNS, TCP or TLS failure |
 | `TimeoutError` | your deadline, or the server's 408 |
 | `WebhookVerificationError` | a webhook that did not verify |
@@ -228,18 +241,22 @@ try {
 ## Retries and idempotency
 
 Three attempts by default (one try, two retries), each with its own 30s deadline.
+The deadline covers the whole attempt — connecting, sending and reading the full
+response — so a server trickling bytes cannot hold a request open past it.
 
 Retried: `429`, `408`, any `5xx`, and connection or timeout failures. Never
 retried: any other 4xx — a 403 on an unverified domain will not succeed on a
 second attempt. Backoff is exponential with full jitter (`random(0, min(8s,
-500ms × 2^attempt))`); a `Retry-After` header overrides it, clamped to 60s.
+500ms × 2^attempt))`); a `Retry-After` header on any retried response (429,
+503, …) overrides it, clamped to 60s.
 
 Retrying a send is only safe because of the idempotency key. If you do not
 supply one, the SDK generates a UUID per `send()` call and sends it on every
 attempt of that call, so a timeout followed by a retry cannot mail your customer
 twice. A key you supply is used as-is and never regenerated — pass your own
 order or invoice id if you want that guarantee to extend across process
-restarts.
+restarts. An empty string counts as no key (one is generated). A key is at most
+255 bytes of UTF-8 and travels in the `Idempotency-Key` header only.
 
 ## Security
 
@@ -254,10 +271,13 @@ The rules this SDK enforces on your behalf, and why:
   error messages, and `console.log(client)` or `JSON.stringify(client)` shows
   `nmail_live_***`.
 - **Header-injection defence.** A `\r`, `\n` or NUL in an address, subject,
-  header, tag or attachment filename is rejected before any request — that is
-  how a user-supplied value turns into an extra `Bcc:` line.
-- **Limits checked locally**: 50 recipients across to/cc/bcc, 10 MiB encoded,
-  25 headers, 10 tags. Exported as `SENDING_LIMITS`.
+  header, tag or attachment filename, content type or content id is rejected
+  before any request — that is how a user-supplied value turns into an extra
+  `Bcc:` line. Reserved header names (`From`, `To`, `Cc`, `Bcc`, `Subject`,
+  `DKIM-Signature`, `Received`) are refused even with surrounding whitespace.
+- **Limits checked locally**: 50 recipients across to/cc/bcc, 10 MiB of message
+  (html + text + attachment bytes before base64 — measured exactly as the server
+  measures it), 25 headers, 10 tags. Exported as `SENDING_LIMITS`.
 - **Key shape checked at construction**, so a truncated paste fails at startup.
 
 Report a vulnerability to security@naijacloud.com — see [SECURITY.md](SECURITY.md).
@@ -297,7 +317,9 @@ app.post('/webhooks/naijamail', express.raw({ type: 'application/json' }), (req,
 
 Timestamps outside a 300s tolerance are rejected — that, not the HMAC, is what
 stops a captured request being replayed. Pass `{ tolerance: seconds }` to change
-it. Several `v1=` values are accepted so a secret can be rotated without dropping
+it; `0` is strict (only the current second), never "the default". The `t=` value
+must be 1–12 digits, the hex signature is compared case-insensitively, and a
+payload that is not a JSON object is rejected. Several `v1=` values are accepted so a secret can be rotated without dropping
 events.
 
 ## Examples

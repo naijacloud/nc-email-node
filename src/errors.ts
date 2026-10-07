@@ -17,8 +17,10 @@ export interface NaijamailErrorOptions {
   error?: string;
   /** `x-request-id`, when the response carried one. */
   requestId?: string;
-  /** Parsed JSON body, or the raw text when it was not JSON. */
+  /** Parsed JSON body; absent when the body was empty or not JSON. */
   body?: unknown;
+  /** The response body exactly as received. */
+  rawBody?: string;
   cause?: unknown;
 }
 
@@ -37,8 +39,10 @@ export class NaijamailError extends Error {
   readonly error: string | undefined;
   /** Quote this in a support ticket — it identifies the exact request. */
   readonly requestId: string | undefined;
-  /** The response body, parsed if it was JSON, raw text otherwise. */
+  /** The response body parsed as JSON, or `undefined` when it was empty or not JSON. */
   readonly body: unknown;
+  /** The response body text exactly as received, or `undefined` with no response. */
+  readonly rawBody: string | undefined;
 
   constructor(message: string, options: NaijamailErrorOptions = {}) {
     super(message, { cause: options.cause });
@@ -46,6 +50,7 @@ export class NaijamailError extends Error {
     this.error = options.error;
     this.requestId = options.requestId;
     this.body = options.body;
+    this.rawBody = options.rawBody;
     // Restores the prototype chain when this bundle is consumed by a build that
     // downlevels below ES2015, where `extends Error` otherwise breaks
     // `instanceof` and turns a caught RateLimitError into a bare Error.
@@ -54,7 +59,7 @@ export class NaijamailError extends Error {
 }
 
 /**
- * 400/422 from the server, or input this SDK refused to put on the wire
+ * 400/413/422 and any other unmapped 4xx from the server, or input this SDK refused to put on the wire
  * (`statusCode: 0`) — a malformed key, a plaintext base URL, a CRLF in a
  * header, a payload over a documented limit.
  */

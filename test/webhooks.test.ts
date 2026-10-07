@@ -145,4 +145,31 @@ describe('verifyWebhook tolerance', () => {
       WebhookVerificationError,
     );
   });
+
+  it('accepts a mixed-case hex signature', () => {
+    const t = nowSeconds();
+    const sig = sign(PAYLOAD, SECRET, t);
+    const mixed = sig.slice(0, 32).toUpperCase() + sig.slice(32);
+    expect(verifyWebhook(PAYLOAD, `t=${t},v1=${mixed}`, SECRET).type).toBe('email.delivered');
+  });
+
+  it.each(['+1700000000', '1_700_000_000', '-5', '1e9', '1700000000.0', '1234567890123', ' 17 00'])(
+    'rejects a non-strict timestamp %j',
+    (t) => {
+      expect(() => verifyWebhook(PAYLOAD, `t=${t},v1=${'a'.repeat(64)}`, SECRET)).toThrow(
+        WebhookVerificationError,
+      );
+    },
+  );
+
+  it('rejects a huge timestamp without overflowing', () => {
+    expect(() =>
+      verifyWebhook(PAYLOAD, `t=99999999999999999999999,v1=${'a'.repeat(64)}`, SECRET),
+    ).toThrow(WebhookVerificationError);
+  });
+
+  it('rejects a well-signed JSON array payload', () => {
+    const body = '[1,2]';
+    expect(() => verifyWebhook(body, header(body), SECRET)).toThrow(/not a JSON object/);
+  });
 });

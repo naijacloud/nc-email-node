@@ -214,6 +214,39 @@ describe('idempotency', () => {
     }
   });
 
+  it('treats an empty idempotency key as "none supplied" and generates one', async () => {
+    await withServer(reply(202, ACCEPTED), async (client, server) => {
+      await client.emails.send({ ...MINIMAL_SEND, idempotencyKey: '' });
+      expect(server.requests[0]?.headers['idempotency-key']).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    });
+  });
+
+  it('sends the key in the header only, never in the body', async () => {
+    await withServer(reply(202, ACCEPTED), async (client, server) => {
+      await client.emails.send({ ...MINIMAL_SEND, idempotencyKey: 'order-1' });
+      const body = JSON.parse(server.requests[0]?.body ?? '{}');
+      expect(body).not.toHaveProperty('idempotency_key');
+      expect(server.requests[0]?.headers['idempotency-key']).toBe('order-1');
+    });
+  });
+
+  it('counts the idempotency key in UTF-8 bytes and sends those bytes', async () => {
+    await withServer(reply(202, ACCEPTED), async (client, server) => {
+      // 'é' is one UTF-16 unit but two UTF-8 bytes: 128 of them is 256 bytes.
+      await expect(
+        client.emails.send({ ...MINIMAL_SEND, idempotencyKey: 'é'.repeat(128) }),
+      ).rejects.toThrow(/256 bytes/);
+      expect(server.requests).toHaveLength(0);
+
+      await client.emails.send({ ...MINIMAL_SEND, idempotencyKey: 'commande-é' });
+      // Node's http server decodes header bytes as latin1; recover the UTF-8.
+      const received = server.requests[0]?.headers['idempotency-key'] as string;
+      expect(Buffer.from(received, 'latin1').toString('utf8')).toBe('commande-é');
+    });
+  });
+
   it('rejects an idempotency key that could break out of the header', async () => {
     await withServer(reply(202, ACCEPTED), async (client, server) => {
       await expect(
@@ -265,7 +298,32 @@ describe('attachments', () => {
     });
   });
 
-  it('accepts pre-encoded base64 only when the caller says so', async () => {
+  it('takes a bare string as already-base64 (no encoding flag needed)', async () => {
+    await withServer(reply(202, ACCEPTED), async (client, server) => {
+      await client.emails.send({
+        ...MINIMAL_SEND,
+        attachments: [{ filename: 'a.txt', content: expected }],
+      });
+      const body = JSON.parse(server.requests[0]?.body ?? '{}');
+      expect(body.attachments[0].content).toBe(expected);
+    });
+  });
+
+  it('refuses an empty attachment, bytes or string, before any request', async () => {
+    await withServer(reply(202, ACCEPTED), async (client, server) => {
+      for (const content of [Buffer.alloc(0), new ArrayBuffer(0), '']) {
+        await expect(
+          client.emails.send({
+            ...MINIMAL_SEND,
+            attachments: [{ filename: 'a.bin', content } as never],
+          }),
+        ).rejects.toThrow(/content is empty/);
+      }
+      expect(server.requests).toHaveLength(0);
+    });
+  });
+
+  it('accepts pre-encoded base64 when the caller says so', async () => {
     await withServer(reply(202, ACCEPTED), async (client, server) => {
       await client.emails.send({
         ...MINIMAL_SEND,

@@ -99,7 +99,10 @@ function rejectUnknownKeys(
  * Bytes in, base64 on the wire (§5.10) — a caller hand-encoding is a caller
  * getting the padding subtly wrong on one file in a thousand.
  */
-function serializeAttachment(raw: Attachment, index: number): Record<string, unknown> {
+function serializeAttachment(
+  raw: Attachment,
+  index: number,
+): { wire: Record<string, unknown>; bytes: number } {
   const label = `attachments[${index}]`;
   const attachment = asRecord(raw, label);
   rejectUnknownKeys(attachment, KNOWN_ATTACHMENT_KEYS, ATTACHMENT_KEY_HINTS, label);
@@ -113,31 +116,40 @@ function serializeAttachment(raw: Attachment, index: number): Record<string, unk
   const content = attachment['content'];
   const encoding = attachment['encoding'];
   let encoded: string;
+  let bytes: number;
+
+  if (encoding !== undefined && encoding !== 'base64') {
+    throw new ValidationError(`${label}.encoding must be 'base64' when set`);
+  }
 
   if (typeof content === 'string') {
-    // A bare string is refused deliberately. The mistake this catches is
-    // passing a *file path* and expecting the SDK to read it: an SDK that
-    // opens arbitrary paths on a caller's behalf is an LFI primitive in a web
-    // handler, so there is no path support at all — read the file yourself and
-    // hand over the bytes.
-    if (encoding !== 'base64') {
-      throw new ValidationError(
-        `${label}.content is a string: pass raw bytes (Uint8Array/Buffer/ArrayBuffer), or set encoding: 'base64' if it is already encoded. File paths are never read by this SDK`,
-      );
-    }
+    // A text string is taken as already base64 (SDK-CONTRACT.md §5.10) and
+    // validated strictly. `encoding: 'base64'` is still accepted but no longer
+    // required. A *file path* fails the strict check and is never read: an SDK
+    // that opens arbitrary paths on a caller's behalf is an LFI primitive in a
+    // web handler.
     encoded = assertStrictBase64(content, label);
+    bytes = Buffer.from(encoded, 'base64').length;
   } else if (content instanceof ArrayBuffer) {
+    bytes = content.byteLength;
     encoded = Buffer.from(content).toString('base64');
   } else if (ArrayBuffer.isView(content)) {
     // byteOffset/byteLength matter: a Uint8Array can be a window onto a larger
     // buffer, and encoding the whole buffer would attach the wrong bytes.
+    bytes = content.byteLength;
     encoded = Buffer.from(content.buffer, content.byteOffset, content.byteLength).toString(
       'base64',
     );
   } else {
     throw new ValidationError(
-      `${label}.content must be a Uint8Array, Buffer or ArrayBuffer (or a base64 string with encoding: 'base64')`,
+      `${label}.content must be a Uint8Array, Buffer or ArrayBuffer, or a base64 string`,
     );
+  }
+
+  // The server refuses a zero-byte attachment (`content is empty`); say so
+  // here instead of spending the round trip.
+  if (bytes === 0) {
+    throw new ValidationError(`${label} content is empty`);
   }
 
   const out: Record<string, unknown> = { filename, content: encoded };
@@ -156,7 +168,7 @@ function serializeAttachment(raw: Attachment, index: number): Record<string, unk
     out['content_id'] = value;
   }
 
-  return out;
+  return { wire: out, bytes };
 }
 
 /**
@@ -176,7 +188,9 @@ function assertStrictBase64(value: string, label: string): string {
     throw new ValidationError(`${label} content is empty`);
   }
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact) || compact.length % 4 !== 0) {
-    throw new ValidationError(`${label} content is not valid base64`);
+    throw new ValidationError(
+      `${label} content is not valid base64 — pass raw bytes (Buffer/Uint8Array/ArrayBuffer) or a base64 string. File paths are never read by this SDK`,
+    );
   }
   return compact;
 }
@@ -228,29 +242,38 @@ export function serializeSendOptions(options: SendEmailOptions): Record<string, 
     body['tags'] = validateTags(asRecord(options.tags, 'tags') as Record<string, string>);
   }
 
+  let attachmentBytes = 0;
   if (options.attachments !== undefined) {
     if (!Array.isArray(options.attachments)) {
       throw new ValidationError('attachments must be an array');
     }
-    body['attachments'] = options.attachments.map(serializeAttachment);
+    const serialized = options.attachments.map(serializeAttachment);
+    body['attachments'] = serialized.map((a) => a.wire);
+    attachmentBytes = serialized.reduce((sum, a) => sum + a.bytes, 0);
   }
+
+  assertMessageSize(
+    Buffer.byteLength(typeof body['html'] === 'string' ? body['html'] : '', 'utf8') +
+      Buffer.byteLength(typeof body['text'] === 'string' ? body['text'] : '', 'utf8') +
+      attachmentBytes,
+  );
 
   return body;
 }
 
 /**
- * Refuse an over-large body locally.
+ * Refuse an over-large message locally.
  *
- * Uploading 12 MiB to be told 413 wastes the caller's bandwidth and, on a
+ * Uploading 12 MiB to be told 400 wastes the caller's bandwidth and, on a
  * mobile or Nigerian-ISP connection, a noticeable amount of their time and
- * money. The limit is on the encoded payload because that is what the server
- * measures.
+ * money. Measured exactly as the server measures it (SDK-CONTRACT.md §5.7):
+ * UTF-8 bytes of html and text plus the *decoded* attachment bytes. Measuring
+ * the encoded JSON instead refused 7.5–10 MiB attachments the server takes.
  */
-export function assertPayloadSize(json: string): void {
-  const bytes = Buffer.byteLength(json, 'utf8');
+export function assertMessageSize(bytes: number): void {
   if (bytes > SENDING_LIMITS.MAX_BYTES) {
     throw new ValidationError(
-      `the encoded message is ${bytes} bytes, over the ${SENDING_LIMITS.MAX_BYTES}-byte limit (attachments grow by about a third when base64-encoded)`,
+      `the message is ${bytes} bytes (html + text + attachments), over the ${SENDING_LIMITS.MAX_BYTES}-byte limit`,
     );
   }
 }

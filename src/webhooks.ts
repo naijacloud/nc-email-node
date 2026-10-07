@@ -107,7 +107,10 @@ function parseSignatureHeader(header: string): { timestamp: number; signatures: 
     const key = part.slice(0, separator).trim();
     const value = part.slice(separator + 1).trim();
 
-    if (key === 't' && /^\d+$/.test(value)) {
+    // 1–12 ASCII digits and nothing else (SDK-CONTRACT.md §6): no sign, no
+    // exponent, nothing a lenient number parser would coerce, and never a
+    // value large enough to lose precision.
+    if (key === 't' && /^\d{1,12}$/.test(value)) {
       timestamp = Number(value);
     } else if (key === 'v1' && value) {
       signatures.push(value.toLowerCase());

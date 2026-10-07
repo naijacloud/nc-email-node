@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { ValidationError } from '../errors';
 import type { Transport } from '../http';
 import {
-  assertPayloadSize,
   serializeSendOptions,
   toEmail,
   toSendEmailResponse,
@@ -35,13 +34,13 @@ export class Emails {
   async send(options: SendEmailOptions): Promise<SendEmailResponse> {
     const body = serializeSendOptions(options);
     const json = JSON.stringify(body);
-    assertPayloadSize(json);
 
     // Generated once per call and reused across every attempt of that call.
     // This single line is what makes §4's retry policy safe: without it, a send
     // that timed out after the server had already accepted it would be sent
     // again on the retry, and the customer would receive the mail twice. A
-    // caller-supplied key always wins and is never regenerated.
+    // caller-supplied key always wins and is never regenerated. An empty string
+    // counts as "none supplied" and gets a generated key, as in every SDK.
     const idempotencyKey = options.idempotencyKey
       ? validateIdempotencyKey(options.idempotencyKey)
       : randomUUID();

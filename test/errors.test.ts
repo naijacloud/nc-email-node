@@ -66,11 +66,21 @@ describe('status to error type', () => {
     expect(error.message).toBe('nope');
   });
 
-  it('leaves an unmapped 4xx as the base error rather than mislabelling it', async () => {
-    const error = await sendAndCatch(405, envelope(405, 'Method Not Allowed'));
-    expect(error).toBeInstanceOf(NaijamailError);
-    expect(error).not.toBeInstanceOf(ValidationError);
-    expect(error.name).toBe('NaijamailError');
+  it.each([405, 415, 451])('maps an unlisted 4xx (%i) to ValidationError, as every SDK does', async (status) => {
+    const error = await sendAndCatch(status, envelope(status, 'no'));
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(error.statusCode).toBe(status);
+  });
+
+  it('does not retry an unlisted 4xx', async () => {
+    const server = await startMockServer(reply(405, envelope(405, 'no')));
+    const client = new Naijamail({ apiKey: TEST_KEY, baseUrl: server.baseUrl });
+    try {
+      await expect(client.emails.send(MINIMAL_SEND)).rejects.toThrow(ValidationError);
+      expect(server.requests).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
   });
 
   it('gives every error class its own name', async () => {
@@ -92,7 +102,9 @@ describe('error envelope', () => {
     });
     expect(error).toBeInstanceOf(ServerError);
     expect(error.message).toMatch(/^HTTP 502/);
-    expect(error.body).toContain('Bad Gateway');
+    // Raw text always; no parsed body when it was not JSON.
+    expect(error.rawBody).toBe('<html><body>Bad Gateway</body></html>');
+    expect(error.body).toBeUndefined();
   });
 
   it('survives a completely empty body', async () => {
@@ -111,6 +123,7 @@ describe('error envelope', () => {
     const body = envelope(403, 'not allowed to send from "x@y.com". Verify the domain first.', 'Forbidden');
     const error = await sendAndCatch(403, body);
     expect(error.body).toEqual(body);
+    expect(error.rawBody).toBe(JSON.stringify(body));
   });
 
   it('reports the Retry-After seconds on a rate limit', async () => {
@@ -118,6 +131,13 @@ describe('error envelope', () => {
       'retry-after': '42',
     });
     expect((error as RateLimitError).retryAfter).toBe(42);
+  });
+
+  it('clamps the reported Retry-After to the same 60 seconds the retry loop honours', async () => {
+    const error = await sendAndCatch(429, envelope(429, 'Too many requests'), {
+      'retry-after': '3600',
+    });
+    expect((error as RateLimitError).retryAfter).toBe(60);
   });
 
   it('never leaks the key into an error', async () => {
