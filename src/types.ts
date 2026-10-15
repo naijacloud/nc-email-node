@@ -85,9 +85,15 @@ export interface SendEmailOptions {
   bcc?: Recipients;
   /** Sent as `reply_to`. */
   replyTo?: Recipients;
-  /** Defaults to `""`, which is what the server would default it to anyway. */
+  /**
+   * Required by the API: an absent, empty or whitespace-only subject is
+   * answered with a 400 `subject is required`. Typed optional only so 0.3.x
+   * callers keep compiling; the SDK sends `""` when it is omitted.
+   */
   subject?: string;
+  /** At least one of `html` and `text` is required (400 `provide html, text, or both`). */
   html?: string;
+  /** At least one of `html` and `text` is required (400 `provide html, text, or both`). */
   text?: string;
   /** Custom headers, at most 25. `from`/`to`/`cc`/`bcc`/`subject`/`dkim-signature`/`received` are refused. */
   headers?: Record<string, string>;
@@ -118,6 +124,13 @@ export interface SendEmailResponse {
    * non-empty value is not an error — the rest of the message still went.
    */
   rejected: RejectedRecipient[];
+  /**
+   * True when the message was sent with a test key (`nmail_test_…`): it was
+   * accepted and recorded, and will never be handed to a mail server. The
+   * same flag `get()` returns, so a test send is recognisable without a
+   * second request.
+   */
+  sandbox: boolean;
 }
 
 export interface Email {
@@ -159,9 +172,9 @@ export interface NaijamailOptions {
 /**
  * A verified webhook event.
  *
- * Loosely typed on purpose: the control plane does not emit these yet
- * (SDK-CONTRACT.md §6), so pinning a `data` shape now would be inventing an API.
- * The signature scheme is fixed; the payload is passed through untouched.
+ * Naija Cloud delivers these, signed, to the endpoints you register. Loosely
+ * typed on purpose: the signature scheme (SDK-CONTRACT.md §6) is fixed, while
+ * the event payloads can gain fields, so `data` is passed through untouched.
  */
 export interface WebhookEvent {
   /** e.g. `"email.delivered"`. */

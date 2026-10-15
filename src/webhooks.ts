@@ -6,9 +6,8 @@ import type { WebhookEvent } from './types';
 /**
  * Webhook signature verification (SDK-CONTRACT.md §6).
  *
- * The control plane does not emit customer-facing webhooks yet — it ingests
- * provider ones. The scheme is fixed here so both halves ship against the same
- * definition rather than one being reverse-engineered from the other later.
+ * Naija Cloud signs every event it delivers to an endpoint you register with
+ * this scheme.
  *
  * Header: `NC-Signature: t=1756468800,v1=<hex sha256 hmac>`
  * Signed payload: `"<t>.<raw request body bytes>"`.

@@ -29,11 +29,21 @@ describe('emails.send', () => {
     await withServer(reply(202, ACCEPTED), async (client, server) => {
       const result = await client.emails.send(MINIMAL_SEND);
 
-      expect(result).toEqual({ id: ACCEPTED.id, status: 'queued', rejected: [] });
+      expect(result).toEqual({ id: ACCEPTED.id, status: 'queued', rejected: [], sandbox: false });
       expect(server.requests).toHaveLength(1);
       expect(server.requests[0]?.method).toBe('POST');
       expect(server.requests[0]?.url).toBe('/v1/emails');
     });
+  });
+
+  it('carries the sandbox flag a test-key send returns', async () => {
+    await withServer(
+      reply(202, { id: 'x1', status: 'queued', sandbox: true }),
+      async (client) => {
+        const result = await client.emails.send(MINIMAL_SEND);
+        expect(result.sandbox).toBe(true);
+      },
+    );
   });
 
   it('normalises a missing rejected list to an empty array', async () => {

@@ -221,8 +221,8 @@ export function serializeSendOptions(options: SendEmailOptions): Record<string, 
     );
   }
 
-  // Sent unconditionally: the server defaults it to "" anyway, and a message
-  // whose subject silently vanished is harder to spot than an empty one.
+  // Sent unconditionally, so the request is what the caller asked for. The API
+  // requires a non-blank subject and answers a missing one with a 400.
   const subject = options.subject === undefined ? '' : assertString(options.subject, 'subject');
   assertNoControlChars(subject, 'subject');
 
@@ -310,6 +310,7 @@ export function toSendEmailResponse(raw: unknown): SendEmailResponse {
     id: requireString(source, 'id'),
     status: requireString(source, 'status'),
     rejected: mapRejected(source['rejected']),
+    sandbox: source['sandbox'] === true,
   };
 }
 

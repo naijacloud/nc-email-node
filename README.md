@@ -114,8 +114,8 @@ so two clients holding two teams' keys in one process cannot interfere.
 | `from` | `string` | Required. `"Name <a@b.com>"` or a bare address. The domain must be verified by your team. |
 | `to` | `string \| string[]` | Required, at least one. |
 | `cc`, `bcc`, `replyTo` | `string \| string[]` | `replyTo` goes on the wire as `reply_to`. |
-| `subject` | `string` | Defaults to `""`. |
-| `html`, `text` | `string` | Send either or both. |
+| `subject` | `string` | Required. A missing or blank subject is refused by the API with a 400 `subject is required`. |
+| `html`, `text` | `string` | At least one is required (400 `provide html, text, or both`); send both for the best inbox placement. |
 | `headers` | `Record<string, string>` | At most 25. `from`, `to`, `cc`, `bcc`, `subject`, `dkim-signature` and `received` are refused. |
 | `attachments` | `Attachment[]` | See below. |
 | `tags` | `Record<string, string>` | At most 10; keys ≤ 64 chars, values ≤ 256. |
@@ -130,8 +130,11 @@ A `202` means the message passed authorisation, suppression and quota checks and
 is queued — not that a mailbox has it.
 
 ```ts
-const { id, status, rejected } = await nm.emails.send({ ... });
+const { id, status, rejected, sandbox } = await nm.emails.send({ ... });
 ```
+
+`sandbox` is `true` when the send used a test key: the message is recorded and
+gets a final status, and is never handed to a mail server.
 
 `rejected` lists recipients we refused, normally because they are on your
 suppression list. It is **always an array** — the wire omits it when empty, the

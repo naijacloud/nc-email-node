@@ -1,9 +1,8 @@
 /**
  * Receiving webhooks in express.
  *
- * Note: Naija Cloud does not emit customer-facing webhooks yet. The signature
- * scheme is fixed and this verifier implements it, but do not build a
- * production flow on it until the feature is announced.
+ * Naija Cloud delivers events to the endpoints you register, each signed with
+ * the NC-Signature header this handler verifies.
  *
  * Run: npm i express tsx
  *      NAIJAMAIL_WEBHOOK_SECRET=nmail_whsec_… npx tsx examples/webhook-express.ts
