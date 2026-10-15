@@ -310,6 +310,7 @@ export function toSendEmailResponse(raw: unknown): SendEmailResponse {
     id: requireString(source, 'id'),
     status: requireString(source, 'status'),
     rejected: mapRejected(source['rejected']),
+    sandbox: source['sandbox'] === true,
   };
 }
 

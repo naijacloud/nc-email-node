@@ -10,12 +10,11 @@ import type { Email, SendEmailOptions, SendEmailResponse } from '../types';
 import { assertNoControlChars, validateIdempotencyKey } from '../validate';
 
 /**
- * The `emails` resource — the whole API surface.
+ * The `emails` resource: send one message and read one back.
  *
- * Two methods, because the server has two endpoints. No domains, api-keys,
- * batch, contacts or audiences: inventing a client method for an endpoint that
- * does not exist produces a 404 the caller cannot act on and a support ticket
- * about a feature we never shipped.
+ * The API has more routes than this (batch send, list, limits, domains and
+ * suppressions; see https://naijacloud.com/docs/api/email). They are REST-only
+ * for now; this SDK wraps the two every integration needs.
  */
 export class Emails {
   readonly #transport: Transport;
